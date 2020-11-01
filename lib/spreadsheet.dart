@@ -6,9 +6,23 @@ class Spreadsheet extends StatefulWidget {
   final int frozenRows;
   final int frozenColumns;
   final EdgeInsets padding;
+  final BorderSide border;
+  final bool outerBorder;
+  final Color frozenRowsColor;
+  final bool striped;
+  final Color stripeColor;
 
-  Spreadsheet({@required this.cells, this.frozenRows = 0, this.frozenColumns = 0, this.padding = EdgeInsets.zero})
-      : assert(_checkNotEmpty(cells), "Cells cannot be empty or null"),
+  Spreadsheet({
+    @required this.cells,
+    this.frozenRows = 0,
+    this.frozenColumns = 0,
+    this.padding = EdgeInsets.zero,
+    this.border = BorderSide.none,
+    this.outerBorder = false,
+    this.frozenRowsColor,
+    this.striped = false,
+    this.stripeColor = Colors.grey,
+  })  : assert(_checkNotEmpty(cells), "Cells cannot be empty or null"),
         assert(_checkAllColumnsAreEqualSize(cells), "Cell columns must be equal in size");
 
   static bool _checkNotEmpty(List<List<SpreadsheetCell>> cells) {
@@ -56,6 +70,16 @@ class _SpreadsheetState extends State<Spreadsheet> {
   @override
   void initState() {
     super.initState();
+    _init();
+    _verticalTitleController = ScrollController();
+    _verticalBodyController = ScrollController();
+    _horizontalBodyController = ScrollController();
+    _horizontalTitleController = ScrollController();
+    _verticalSyncController = _SyncScrollController([_verticalTitleController, _verticalBodyController]);
+    _horizontalSyncController = _SyncScrollController([_horizontalTitleController, _horizontalBodyController]);
+  }
+
+  void _init() {
     columnWidths = _calculateWidths(widget.cells);
     rowHeights = _calculateHeights(widget.cells);
     totalWidth = columnWidths.reduce((value, element) => value + element);
@@ -67,13 +91,13 @@ class _SpreadsheetState extends State<Spreadsheet> {
     frozenRowHeight = widget.frozenRows > 0 ? rowHeights.sublist(0, widget.frozenRows).reduce((value, element) => value + element) : 0.0;
     columnLength = widget.cells[0].length;
     _buildPositionedCells();
+  }
 
-    _verticalTitleController = ScrollController();
-    _verticalBodyController = ScrollController();
-    _horizontalBodyController = ScrollController();
-    _horizontalTitleController = ScrollController();
-    _verticalSyncController = _SyncScrollController([_verticalTitleController, _verticalBodyController]);
-    _horizontalSyncController = _SyncScrollController([_horizontalTitleController, _horizontalBodyController]);
+  @override
+  void didUpdateWidget(covariant Spreadsheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // need to call _init again so the correct frozen positions are set.  But this is an expensive call.
+    _init();
   }
 
   @override
@@ -85,18 +109,20 @@ class _SpreadsheetState extends State<Spreadsheet> {
 
   @override
   Widget build(BuildContext context) {
-    var frozenCorners = ConstrainedBox(constraints: BoxConstraints(maxWidth: frozenColumnWidth, maxHeight: frozenRowHeight), child: Stack(children: _wrapCells(frozenCornerCells)));
-    var frozenColumns = ConstrainedBox(constraints: BoxConstraints(maxWidth: frozenColumnWidth, maxHeight: totalHeight), child: Stack(children: _wrapCells(frozenColumnCells)));
-    var frozenRows = ConstrainedBox(constraints: BoxConstraints(maxWidth: totalWidth, maxHeight: frozenRowHeight), child: Stack(children: _wrapCells(frozenRowCells)));
-    var body = ConstrainedBox(constraints: BoxConstraints(maxWidth: totalWidth, maxHeight: totalHeight), child: Stack(children: _wrapCells(bodyCells)));
+    final width = totalWidth - frozenColumnWidth + widget.padding.right;
+    final height = totalHeight - frozenRowHeight + widget.padding.bottom;
+    var frozenCorners = ConstrainedBox(constraints: BoxConstraints(maxWidth: frozenColumnWidth, maxHeight: frozenRowHeight), child: Stack(children: _wrapCells(frozenCornerCells, color: widget.frozenRowsColor)));
+    var frozenColumns = ConstrainedBox(constraints: BoxConstraints(maxWidth: frozenColumnWidth, maxHeight: height), child: Stack(children: _wrapCells(frozenColumnCells)));
+    var frozenRows = ConstrainedBox(constraints: BoxConstraints(maxWidth: width, maxHeight: frozenRowHeight), child: Stack(children: _wrapCells(frozenRowCells, color: widget.frozenRowsColor)));
+    var body = ConstrainedBox(constraints: BoxConstraints(maxWidth: width, maxHeight: height), child: Stack(children: _wrapCells(bodyCells)));
     const physics = ClampingScrollPhysics();
     return Column(
       children: <Widget>[
         Row(
           children: <Widget>[
-            // STICKY LEGEND
+            // CORNERS
             frozenCorners,
-            // STICKY ROW
+            // FROZEN ROWS
             Expanded(
               child: NotificationListener<ScrollNotification>(
                 child: SingleChildScrollView(
@@ -117,7 +143,7 @@ class _SpreadsheetState extends State<Spreadsheet> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              // STICKY COLUMN
+              // FROZEN COLUMNS
               NotificationListener<ScrollNotification>(
                 child: SingleChildScrollView(
                   physics: physics,
@@ -129,7 +155,7 @@ class _SpreadsheetState extends State<Spreadsheet> {
                   return true;
                 },
               ),
-              // CONTENT
+              // BODY
               Expanded(
                 child: NotificationListener<ScrollNotification>(
                   onNotification: (ScrollNotification notification) {
@@ -142,11 +168,10 @@ class _SpreadsheetState extends State<Spreadsheet> {
                     controller: _horizontalBodyController,
                     child: NotificationListener<ScrollNotification>(
                       child: SingleChildScrollView(
-                          physics: physics,
-                          controller: _verticalBodyController,
-                          child: Column(
-                            children: [body],
-                          )),
+                        physics: physics,
+                        controller: _verticalBodyController,
+                        child: body,
+                      ),
                       onNotification: (ScrollNotification notification) {
                         _verticalSyncController.processNotification(notification, _verticalBodyController);
                         return true;
@@ -162,19 +187,32 @@ class _SpreadsheetState extends State<Spreadsheet> {
     );
   }
 
-  List<Widget> _wrapCells(List<_PositionedCell> cells) {
-    return cells.map(_wrapCell).toList();
+  List<Widget> _wrapCells(List<_PositionedCell> cells, {Color color}) {
+    return cells.map((cell) {
+      return _wrapCell(cell, color: (color == null && widget.striped && widget.stripeColor != null && cell.yIndex % 2 == 0 ? widget.stripeColor : color));
+    }).toList();
   }
 
-  Widget _wrapCell(_PositionedCell cell) {
+  Widget _wrapCell(_PositionedCell cell, {Color color}) {
     return Positioned(
       left: cell.x,
       top: cell.y,
       width: cell.width,
       height: cell.height,
-      child: Align(
-        alignment: cell.alignment,
-        child: cell.cell,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          border: Border(
+            right: widget.border,
+            bottom: widget.border,
+            top: (widget.outerBorder && cell.alignment.y > 0.0 ? widget.border : BorderSide.none),
+            left: (widget.outerBorder && cell.alignment.x > 0.0 ? widget.border : BorderSide.none),
+          ),
+        ),
+        child: Align(
+          alignment: cell.alignment,
+          child: cell.cell,
+        ),
       ),
     );
   }
@@ -204,8 +242,9 @@ class _SpreadsheetState extends State<Spreadsheet> {
 
         var isFrozCol = x < widget.frozenColumns;
         var isFrozRow = y < widget.frozenRows;
-        var isCorner = !isFrozCol && !isFrozRow;
-        var pos = _PositionedCell(xPos - (isFrozRow || !isCorner ? frozenColumnWidth : 0.0), yPos - (isFrozCol || !isCorner ? frozenRowHeight : 0.0), width, height, align, cell);
+        var isCorner = isFrozCol && isFrozRow;
+        var isBody = !isFrozCol && !isFrozRow;
+        var pos = _PositionedCell(xPos - ((isFrozRow && !isCorner) || isBody ? frozenColumnWidth : 0.0), yPos - ((isFrozCol && !isCorner) || isBody ? frozenRowHeight : 0.0), width, height, align, cell, xIndex: x, yIndex: y);
         if (isFrozCol && isFrozRow)
           frozenCornerCells.add(pos);
         else if (isFrozCol)
@@ -263,12 +302,14 @@ class _SpreadsheetState extends State<Spreadsheet> {
 class _PositionedCell {
   final double x;
   final double y;
+  final int xIndex;
+  final int yIndex;
   final double width;
   final double height;
   final Alignment alignment;
   final SpreadsheetCell cell;
 
-  _PositionedCell(this.x, this.y, this.width, this.height, this.alignment, this.cell);
+  _PositionedCell(this.x, this.y, this.width, this.height, this.alignment, this.cell, {@required this.xIndex, @required this.yIndex});
 }
 
 class SpreadsheetCell extends StatelessWidget {

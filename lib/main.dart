@@ -44,19 +44,23 @@ class _MyHomePageState extends State<MyHomePage> {
 class SpreadsheetExample extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    var w = 100.0;
-    var h = 100.0;
+    var w = 70.0;
+    var h = 70.0;
     var diff = 30.0;
-    var padding = 20.0;
+    var padding = 40.0;
     return Spreadsheet(
       frozenColumns: 1,
       frozenRows: 1,
       padding: EdgeInsets.all(padding),
+      border: BorderSide(color: Colors.black),
+      frozenRowsColor: Colors.blue[100],
+      striped: true,
       cells: [
         [
           SpreadsheetCell(child: ColoredBox(color: Colors.blue), width: w, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.red), width: w - diff, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.green), width: w + diff, height: h),
+          SpreadsheetCell(child: ColoredBox(color: Colors.brown), width: w, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.yellow), width: w, height: h - diff),
           SpreadsheetCell(child: ColoredBox(color: Colors.purple), width: w, height: h + diff),
           SpreadsheetCell(child: ColoredBox(color: Colors.orange), width: w, height: h + diff),
@@ -64,6 +68,7 @@ class SpreadsheetExample extends StatelessWidget {
         [
           SpreadsheetCell(child: ColoredBox(color: Colors.purple), width: w + diff, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.blue), width: w, height: h + diff),
+          SpreadsheetCell(child: ColoredBox(color: Colors.brown), width: w, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.red), width: w, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.green), width: w - diff, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.yellow), width: w, height: h - diff),
@@ -74,15 +79,35 @@ class SpreadsheetExample extends StatelessWidget {
           SpreadsheetCell(child: ColoredBox(color: Colors.purple), width: w, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.blue), width: w, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.red), width: w, height: h),
-          SpreadsheetCell(child: ColoredBox(color: Colors.green), width: w, height: h),
+          SpreadsheetCell(child: ColoredBox(color: Colors.brown), width: w, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.orange), width: w, height: h + diff),
+          SpreadsheetCell(child: ColoredBox(color: Colors.green), width: w, height: h),
         ],
         [
           SpreadsheetCell(child: ColoredBox(color: Colors.green), width: w, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.orange), width: w, height: h + diff),
           SpreadsheetCell(child: ColoredBox(color: Colors.red), width: w, height: h - diff),
+          SpreadsheetCell(child: ColoredBox(color: Colors.brown), width: w, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.yellow), width: w, height: h + diff),
           SpreadsheetCell(child: ColoredBox(color: Colors.purple), width: w, height: h),
+          SpreadsheetCell(child: ColoredBox(color: Colors.blue), width: w + diff, height: h - diff),
+        ],
+        [
+          SpreadsheetCell(child: ColoredBox(color: Colors.orange), width: w, height: h + diff),
+          SpreadsheetCell(child: ColoredBox(color: Colors.green), width: w, height: h),
+          SpreadsheetCell(child: ColoredBox(color: Colors.yellow), width: w, height: h + diff),
+          SpreadsheetCell(child: ColoredBox(color: Colors.purple), width: w, height: h),
+          SpreadsheetCell(child: ColoredBox(color: Colors.blue), width: w + diff, height: h - diff),
+          SpreadsheetCell(child: ColoredBox(color: Colors.brown), width: w, height: h),
+          SpreadsheetCell(child: ColoredBox(color: Colors.red), width: w, height: h - diff),
+        ],
+        [
+          SpreadsheetCell(child: ColoredBox(color: Colors.green), width: w, height: h),
+          SpreadsheetCell(child: ColoredBox(color: Colors.yellow), width: w, height: h + diff),
+          SpreadsheetCell(child: ColoredBox(color: Colors.purple), width: w, height: h),
+          SpreadsheetCell(child: ColoredBox(color: Colors.red), width: w, height: h - diff),
+          SpreadsheetCell(child: ColoredBox(color: Colors.orange), width: w, height: h + diff),
+          SpreadsheetCell(child: ColoredBox(color: Colors.brown), width: w, height: h),
           SpreadsheetCell(child: ColoredBox(color: Colors.blue), width: w + diff, height: h - diff),
         ],
       ],
