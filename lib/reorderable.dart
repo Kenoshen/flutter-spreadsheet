@@ -1,0 +1,57 @@
+import 'package:flutter/material.dart';
+import 'package:reorderables/reorderables.dart';
+import 'package:table_sticky_headers/table_sticky_headers.dart';
+
+class ReorderableExample extends StatefulWidget {
+  @override
+  _ReorderableExampleState createState() => _ReorderableExampleState();
+}
+
+class _ReorderableExampleState extends State<ReorderableExample> {
+  List<Widget> _rows;
+
+  @override
+  void initState() {
+    super.initState();
+    _rows = List<Widget>.generate(50,
+            (int index) => Row(children: [Text('This is sliver child $index', textScaleFactor: 2), Text('This is sliver child $index', textScaleFactor: 2), Text('This is sliver child $index', textScaleFactor: 2), ],)
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    void _onReorder(int oldIndex, int newIndex) {
+      setState(() {
+        Widget row = _rows.removeAt(oldIndex);
+        _rows.insert(newIndex, row);
+      });
+    }
+    // Make sure there is a scroll controller attached to the scroll view that contains ReorderableSliverList.
+    // Otherwise an error will be thrown.
+    ScrollController _scrollController = PrimaryScrollController.of(context) ?? ScrollController();
+
+    return CustomScrollView(
+      // A ScrollController must be included in CustomScrollView, otherwise
+      // ReorderableSliverList wouldn't work
+      controller: _scrollController,
+      slivers: <Widget>[
+        ReorderableSliverList(
+          delegate: ReorderableSliverChildListDelegate(_rows),
+          // or use ReorderableSliverChildBuilderDelegate if needed
+//          delegate: ReorderableSliverChildBuilderDelegate(
+//            (BuildContext context, int index) => _rows[index],
+//            childCount: _rows.length
+//          ),
+          onReorder: _onReorder,
+          onNoReorder: (int index) {
+            //this callback is optional
+            debugPrint('${DateTime.now().toString().substring(5, 22)} reorder cancelled. index:$index');
+          },
+          // onReorderStarted: (int index) {
+          //   debugPrint('${DateTime.now().toString().substring(5, 22)} reorder started. index:$index');
+          // },
+        )
+      ],
+    );
+  }
+}

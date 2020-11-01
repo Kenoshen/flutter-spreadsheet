@@ -1,0 +1,21 @@
+name: spreadsheet
+description: A table widget that does frozen rows and
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=2.7.0 <3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  table_sticky_headers: 1.1.2
+  reorderables: 0.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
