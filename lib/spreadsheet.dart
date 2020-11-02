@@ -44,7 +44,7 @@ class Spreadsheet extends StatefulWidget {
   _SpreadsheetState createState() => _SpreadsheetState();
 }
 
-class _SpreadsheetState extends State<Spreadsheet> {
+class _SpreadsheetState extends State<Spreadsheet> with TickerProviderStateMixin<Spreadsheet> {
   List<double> columnWidths;
   List<double> rowHeights;
   double totalWidth;
@@ -67,6 +67,10 @@ class _SpreadsheetState extends State<Spreadsheet> {
   _SyncScrollController _verticalSyncController;
   _SyncScrollController _horizontalSyncController;
 
+  AnimationController _entranceController;
+  AnimationController _ghostController;
+  static const Duration _animationDuration = Duration(milliseconds: 200);
+
   @override
   void initState() {
     super.initState();
@@ -77,6 +81,8 @@ class _SpreadsheetState extends State<Spreadsheet> {
     _horizontalTitleController = ScrollController();
     _verticalSyncController = _SyncScrollController([_verticalTitleController, _verticalBodyController]);
     _horizontalSyncController = _SyncScrollController([_horizontalTitleController, _horizontalBodyController]);
+    _entranceController = AnimationController(value: 1.0, vsync: this, duration: _animationDuration);
+    _ghostController = AnimationController(value: 0, vsync: this, duration: _animationDuration);
   }
 
   void _init() {
@@ -105,16 +111,18 @@ class _SpreadsheetState extends State<Spreadsheet> {
     super.dispose();
     _verticalSyncController.dispose();
     _horizontalSyncController.dispose();
+    _entranceController.dispose();
+    _ghostController.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final width = totalWidth - frozenColumnWidth + widget.padding.right;
-    final height = totalHeight - frozenRowHeight + widget.padding.bottom;
+    final bodyWidth = totalWidth - frozenColumnWidth + widget.padding.right;
+    final bodyHeight = totalHeight - frozenRowHeight + widget.padding.bottom;
     var frozenCorners = ConstrainedBox(constraints: BoxConstraints(maxWidth: frozenColumnWidth, maxHeight: frozenRowHeight), child: Stack(children: _wrapCells(frozenCornerCells, color: widget.frozenRowsColor)));
-    var frozenColumns = ConstrainedBox(constraints: BoxConstraints(maxWidth: frozenColumnWidth, maxHeight: height), child: Stack(children: _wrapCells(frozenColumnCells)));
-    var frozenRows = ConstrainedBox(constraints: BoxConstraints(maxWidth: width, maxHeight: frozenRowHeight), child: Stack(children: _wrapCells(frozenRowCells, color: widget.frozenRowsColor)));
-    var body = ConstrainedBox(constraints: BoxConstraints(maxWidth: width, maxHeight: height), child: Stack(children: _wrapCells(bodyCells)));
+    var frozenColumns = ConstrainedBox(constraints: BoxConstraints(maxWidth: frozenColumnWidth, maxHeight: bodyHeight), child: Stack(children: _wrapCells(frozenColumnCells)));
+    var frozenRows = ConstrainedBox(constraints: BoxConstraints(maxWidth: bodyWidth, maxHeight: frozenRowHeight), child: Stack(children: _wrapCells(frozenRowCells, color: widget.frozenRowsColor)));
+    var body = ConstrainedBox(constraints: BoxConstraints(maxWidth: bodyWidth, maxHeight: bodyHeight), child: Stack(children: _wrapCells(bodyCells)));
     const physics = ClampingScrollPhysics();
     return Column(
       children: <Widget>[
@@ -194,7 +202,7 @@ class _SpreadsheetState extends State<Spreadsheet> {
   }
 
   Widget _wrapCell(_PositionedCell cell, {Color color}) {
-    return Positioned(
+    var _cell = Positioned(
       left: cell.x,
       top: cell.y,
       width: cell.width,
@@ -214,6 +222,14 @@ class _SpreadsheetState extends State<Spreadsheet> {
           child: cell.cell,
         ),
       ),
+    );
+    return _cell;
+  }
+
+  Widget _wrapCellWithAnimation(Widget child) {
+    return FadeTransition(
+      opacity: _ghostController,
+      child: child,
     );
   }
 
