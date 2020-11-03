@@ -1,5 +1,8 @@
+import 'dart:math';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 class Spreadsheet extends StatefulWidget {
   final List<List<SpreadsheetCell>> cells;
@@ -70,6 +73,11 @@ class _SpreadsheetState extends State<Spreadsheet> with TickerProviderStateMixin
   AnimationController _entranceController;
   AnimationController _ghostController;
   static const Duration _animationDuration = Duration(milliseconds: 200);
+  int _currentIndex = -1;
+  int _previousIndex = -1;
+  int _initialIndex = -1;
+  Axis _reorderAxis = Axis.horizontal;
+  bool _scrolling = false;
 
   @override
   void initState() {
@@ -119,10 +127,10 @@ class _SpreadsheetState extends State<Spreadsheet> with TickerProviderStateMixin
   Widget build(BuildContext context) {
     final bodyWidth = totalWidth - frozenColumnWidth + widget.padding.right;
     final bodyHeight = totalHeight - frozenRowHeight + widget.padding.bottom;
-    var frozenCorners = ConstrainedBox(constraints: BoxConstraints(maxWidth: frozenColumnWidth, maxHeight: frozenRowHeight), child: Stack(children: _wrapCells(frozenCornerCells, color: widget.frozenRowsColor)));
-    var frozenColumns = ConstrainedBox(constraints: BoxConstraints(maxWidth: frozenColumnWidth, maxHeight: bodyHeight), child: Stack(children: _wrapCells(frozenColumnCells)));
-    var frozenRows = ConstrainedBox(constraints: BoxConstraints(maxWidth: bodyWidth, maxHeight: frozenRowHeight), child: Stack(children: _wrapCells(frozenRowCells, color: widget.frozenRowsColor)));
-    var body = ConstrainedBox(constraints: BoxConstraints(maxWidth: bodyWidth, maxHeight: bodyHeight), child: Stack(children: _wrapCells(bodyCells)));
+    var frozenCorners = ConstrainedBox(constraints: BoxConstraints(maxWidth: frozenColumnWidth, maxHeight: frozenRowHeight), child: Stack(children: frozenCornerCells.map((w) => w.wrappedInPositioned()).toList()));
+    var frozenColumns = ConstrainedBox(constraints: BoxConstraints(maxWidth: frozenColumnWidth, maxHeight: bodyHeight), child: Stack(children: frozenColumnCells.map((w) => w.wrappedInPositioned(child: _wrapInDragTarget(child: w, axis: Axis.vertical, index: w.yIndex))).toList()));
+    var frozenRows = ConstrainedBox(constraints: BoxConstraints(maxWidth: bodyWidth, maxHeight: frozenRowHeight), child: Stack(children: frozenRowCells.map((w) => w.wrappedInPositioned(child: _wrapInDragTarget(child: w, axis: Axis.horizontal, index: w.xIndex))).toList()));
+    var body = ConstrainedBox(constraints: BoxConstraints(maxWidth: bodyWidth, maxHeight: bodyHeight), child: Stack(children: bodyCells.map((w) => w.wrappedInPositioned()).toList()));
     const physics = ClampingScrollPhysics();
     return Column(
       children: <Widget>[
@@ -195,42 +203,161 @@ class _SpreadsheetState extends State<Spreadsheet> with TickerProviderStateMixin
     );
   }
 
-  List<Widget> _wrapCells(List<_PositionedCell> cells, {Color color}) {
-    return cells.map((cell) {
-      return _wrapCell(cell, color: (color == null && widget.striped && widget.stripeColor != null && cell.yIndex % 2 == 0 ? widget.stripeColor : color));
-    }).toList();
+  Widget _wrapInDragTarget({@required Widget child, @required Axis axis, @required int index}) {
+    // We wrap the drag target in a Builder so that we can scroll to its specific context.
+    return Builder(builder: (BuildContext context) {
+      Widget dragTarget = DragTarget<int>(
+        builder: (BuildContext context, List<int> acceptedCandidates, List<dynamic> rejectedCandidates) {
+          // return child;
+          return _wrapInDraggable(child: child, axis: axis, index: index);
+        },
+        onWillAccept: (int indexOfDrag) {
+          if (index != _currentIndex) {
+            setState(() {
+              _previousIndex = _currentIndex;
+              _currentIndex = index;
+            });
+          }
+          _scrollTo(context, axis, index);
+          return _previousIndex != index;
+        },
+        onAccept: (int accepted) {},
+        onLeave: (Object leaving) {},
+      );
+      // dragTarget = KeyedSubtree(key: ValueKey(index), child: dragTarget);
+      return dragTarget;
+    });
   }
 
-  Widget _wrapCell(_PositionedCell cell, {Color color}) {
-    var _cell = Positioned(
-      left: cell.x,
-      top: cell.y,
-      width: cell.width,
-      height: cell.height,
-      child: Container(
-        decoration: BoxDecoration(
-          color: color,
-          border: Border(
-            right: widget.border,
-            bottom: widget.border,
-            top: (widget.outerBorder && cell.alignment.y > 0.0 ? widget.border : BorderSide.none),
-            left: (widget.outerBorder && cell.alignment.x > 0.0 ? widget.border : BorderSide.none),
-          ),
+  Widget _wrapInDraggable({@required Widget child, @required Axis axis, @required int index}) {
+    return LongPressDraggable<int>(
+      maxSimultaneousDrags: 1,
+      axis: axis,
+      data: index,
+      ignoringFeedbackSemantics: false,
+      feedback: _constructDragFeedback(axis, index),
+      child: child,
+      childWhenDragging: Opacity(
+        opacity: 1,
+        child: child,
+      ),
+      dragAnchor: DragAnchor.child,
+      onDragStarted: () {
+        setState(() {
+          _currentIndex = index;
+          _previousIndex = index;
+          _initialIndex = index;
+          _reorderAxis = axis;
+        });
+      },
+      onDragCompleted: _doReorder,
+      onDraggableCanceled: (_, __) {
+        _doReorder();
+      },
+    );
+  }
+
+  Widget _constructDragFeedback(Axis axis, int index) {
+    final bool isHorizontal = axis == Axis.horizontal;
+    double size = isHorizontal ? columnWidths[index] : rowHeights[index];
+    double totalLength = isHorizontal ? totalHeight : totalWidth;
+    double headerLength = isHorizontal ? frozenRowHeight : frozenColumnWidth;
+    List<_PositionedCell> headerCells = (isHorizontal ? frozenRowCells : frozenColumnCells).where((c) => isHorizontal ? c.xIndex == index : c.yIndex == index).toList();
+    List<_PositionedCell> contentCells = bodyCells.where((c) => isHorizontal ? c.xIndex == index : c.yIndex == index).toList();
+    Widget cellToPositioned(_PositionedCell c) {
+      return Positioned(
+        child: c,
+        top: isHorizontal ? c.y : 0.0,
+        left: isHorizontal ? 0.0 : c.x,
+        width: c.width,
+        height: c.height,
+      );
+    }
+
+    var headerStack = ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: isHorizontal ? size : headerLength,
+        maxHeight: isHorizontal ? headerLength : size,
+      ),
+      child: Stack(children: headerCells.map(cellToPositioned).toList()),
+    );
+    var bodyStack = ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: isHorizontal ? size : (totalLength - headerLength),
+        maxHeight: isHorizontal ? (totalLength - headerLength) : size,
+      ),
+      child: Stack(children: contentCells.map(cellToPositioned).toList()),
+    );
+    List<Widget> children = [
+      // HEADER
+      headerStack,
+      // BODY
+      Expanded(
+        child: bodyStack,
+      ),
+    ];
+    return SizedBox.fromSize(
+      size: isHorizontal ? Size(size, totalLength - headerLength) : Size(totalLength - headerLength, size),
+      child: Material(
+        child: Card(
+          child: isHorizontal ? Column(children: children) : Row(children: children),
         ),
-        child: Align(
-          alignment: cell.alignment,
-          child: cell.cell,
-        ),
+        elevation: 6.0,
+        color: Colors.transparent,
+        borderRadius: BorderRadius.zero,
       ),
     );
-    return _cell;
   }
 
-  Widget _wrapCellWithAnimation(Widget child) {
-    return FadeTransition(
-      opacity: _ghostController,
-      child: child,
+  // Scrolls to a target context if that context is not on the screen.
+  void _scrollTo(BuildContext context, Axis axis, int index) {
+    if (_scrolling) return;
+    final RenderObject contextObject = context.findRenderObject();
+    final RenderAbstractViewport viewport = RenderAbstractViewport.of(contextObject);
+    assert(viewport != null);
+    final _scrollController = axis == Axis.horizontal ? _horizontalTitleController : _verticalTitleController;
+
+    final double margin = (axis == Axis.horizontal ? columnWidths[index] : rowHeights[index]) / 2;
+
+    assert(
+        _scrollController.hasClients,
+        'An attached scroll controller is needed. '
+        'You probably forgot to attach one to the parent scroll view that contains this reorderable list.');
+
+    final double scrollOffset = _scrollController.offset;
+    final double topOffset = max(
+      _scrollController.position.minScrollExtent,
+      viewport.getOffsetToReveal(contextObject, 0.0).offset - margin,
     );
+    final double bottomOffset = min(
+      _scrollController.position.maxScrollExtent,
+      viewport.getOffsetToReveal(contextObject, 1.0).offset + margin,
+    );
+    final bool onScreen = scrollOffset <= topOffset && scrollOffset >= bottomOffset;
+    // If the context is off screen, then we request a scroll to make it visible.
+    if (!onScreen) {
+      _scrolling = true;
+      _scrollController.position
+          .animateTo(
+        scrollOffset < bottomOffset ? bottomOffset : topOffset,
+        duration: _animationDuration,
+        curve: Curves.easeInOut,
+      )
+          .then((void value) {
+        setState(() {
+          _scrolling = false;
+        });
+      });
+    }
+  }
+
+  void _doReorder() {
+    print("Do reorder: $_reorderAxis $_currentIndex, $_previousIndex, $_initialIndex");
+    setState(() {
+      _currentIndex = -1;
+      _previousIndex = -1;
+      _initialIndex = -1;
+    });
   }
 
   void _buildPositionedCells() {
@@ -260,7 +387,23 @@ class _SpreadsheetState extends State<Spreadsheet> with TickerProviderStateMixin
         var isFrozRow = y < widget.frozenRows;
         var isCorner = isFrozCol && isFrozRow;
         var isBody = !isFrozCol && !isFrozRow;
-        var pos = _PositionedCell(xPos - ((isFrozRow && !isCorner) || isBody ? frozenColumnWidth : 0.0), yPos - ((isFrozCol && !isCorner) || isBody ? frozenRowHeight : 0.0), width, height, align, cell, xIndex: x, yIndex: y);
+        Color color;
+        if (isFrozRow && widget.frozenRowsColor != null)
+          color = widget.frozenRowsColor;
+        else if (widget.striped && widget.stripeColor != null && y % 2 == 0) color = widget.stripeColor;
+        var pos = _PositionedCell(
+          xPos - ((isFrozRow && !isCorner) || isBody ? frozenColumnWidth : 0.0),
+          yPos - ((isFrozCol && !isCorner) || isBody ? frozenRowHeight : 0.0),
+          width,
+          height,
+          align,
+          cell,
+          xIndex: x,
+          yIndex: y,
+          border: widget.border,
+          outerBorder: widget.outerBorder,
+          color: color,
+        );
         if (isFrozCol && isFrozRow)
           frozenCornerCells.add(pos);
         else if (isFrozCol)
@@ -315,7 +458,7 @@ class _SpreadsheetState extends State<Spreadsheet> with TickerProviderStateMixin
   }
 }
 
-class _PositionedCell {
+class _PositionedCell extends StatelessWidget {
   final double x;
   final double y;
   final int xIndex;
@@ -323,9 +466,43 @@ class _PositionedCell {
   final double width;
   final double height;
   final Alignment alignment;
+  final Color color;
+  final BorderSide border;
+  final bool outerBorder;
   final SpreadsheetCell cell;
 
-  _PositionedCell(this.x, this.y, this.width, this.height, this.alignment, this.cell, {@required this.xIndex, @required this.yIndex});
+  _PositionedCell(this.x, this.y, this.width, this.height, this.alignment, this.cell, {@required this.xIndex, @required this.yIndex, this.color, this.border, this.outerBorder});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: cell.width,
+      height: cell.height,
+      decoration: BoxDecoration(
+        color: color,
+        border: Border(
+          right: border,
+          bottom: border,
+          top: (outerBorder && alignment.y > 0.0 ? border : BorderSide.none),
+          left: (outerBorder && alignment.x > 0.0 ? border : BorderSide.none),
+        ),
+      ),
+      child: Align(
+        alignment: alignment,
+        child: cell,
+      ),
+    );
+  }
+
+  Widget wrappedInPositioned({Widget child}) {
+    return Positioned(
+      child: child ?? this,
+      left: x,
+      top: y,
+      width: width,
+      height: height,
+    );
+  }
 }
 
 class SpreadsheetCell extends StatelessWidget {
