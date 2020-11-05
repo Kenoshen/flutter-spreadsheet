@@ -55,6 +55,7 @@ class SpreadsheetExample extends StatelessWidget {
       border: BorderSide(color: Colors.black),
       frozenRowsColor: Colors.blue[100],
       striped: true,
+      reorderable: true,
       cells: [
         [
           SpreadsheetCell(child: ColoredBox(color: Colors.blue), width: w, height: h),
